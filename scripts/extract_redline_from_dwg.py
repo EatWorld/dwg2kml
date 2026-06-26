@@ -26,7 +26,7 @@ ODA_PATHS = [
     r"C:\Program Files\ODA\ODAFileConverter 27.1\ODAFileConverter.exe",
 ]
 REDLINE_KEYWORDS = ['红线', '用地红线', 'redline', 'REDLINE', 'RedLine']
-TEXT_LAYERS = ['姓名层', 'MJZJ', '面积层', '户名层']
+TEXT_LAYERS = ['姓名层', 'MJZJ', '面积层', '户名层', 'mainlayer']
 AREA_MIN_MU = 0.5  # 面积量算图模式：最小宗地面积（亩）
 
 
@@ -121,11 +121,10 @@ def determine_axes(pts):
 
 
 def identify_zone(eastings):
-    """从东坐标前2位识别3度带带号。东坐标不含带号时返回None。"""
     avg = sum(eastings) / len(eastings)
     if avg > 1e7:
         return int(str(int(avg))[:2])
-    return None  # 无法自动识别，需用户通过 --zone 参数指定
+    return 39  # 蚌埠默认
 
 
 def to_wgs(pts_raw, zone):
@@ -195,8 +194,6 @@ def main():
     parser.add_argument('--input', required=True, help='DWG文件路径')
     parser.add_argument('--output', required=True, help='输出KML路径')
     parser.add_argument('--project-name', default='项目红线', help='项目名称')
-    parser.add_argument('--zone', type=int, default=None,
-                        help='3度带带号（如39）。不指定时自动从东坐标前2位识别')
     args = parser.parse_args()
 
     print("=" * 50)
@@ -233,11 +230,7 @@ def main():
             redlines.sort(key=lambda x: x['area'], reverse=True)
             print(f"  红线: {len(redlines)} 条")
 
-            zone = args.zone or identify_zone(determine_axes(redlines[0]['pts'])[0])
-            if not zone:
-                print("❌ 无法自动识别带号（东坐标不含带号前缀），请通过 --zone 参数指定")
-                print("   示例: --zone 39 (蚌埠)  --zone 40 (上海)  --zone 38 (武汉)")
-                sys.exit(1)
+            zone = identify_zone(determine_axes(redlines[0]['pts'])[0])
             print(f"  带号: {zone}  EPSG: {4509+zone}")
 
             placemarks = []
@@ -254,17 +247,15 @@ def main():
         else:
             # === 模式B：面积量算图 ===
             print("模式: 面积量算图模式（无红线图层）")
-            # 排除图框（TK）和极小段线
-            polylines = collect_polylines(msp, layer_filter={'0', 'MJZJ'})
+            # 排除图框(TK)和红线图层，其余全部作为宗地候选
+            exclude_layers = {'TK'} | set(REDLINE_KEYWORDS)
+            polylines = [p for p in collect_polylines(msp)
+                         if p['layer'] not in exclude_layers]
             parcels = [p for p in polylines if p['mu'] >= AREA_MIN_MU]
             parcels.sort(key=lambda x: x['area'], reverse=True)
             print(f"  宗地: {len(parcels)} 块")
 
-            zone = args.zone or identify_zone(determine_axes(parcels[0]['pts'])[0])
-            if not zone:
-                print("❌ 无法自动识别带号（东坐标不含带号前缀），请通过 --zone 参数指定")
-                print("   示例: --zone 39 (蚌埠)  --zone 40 (上海)  --zone 38 (武汉)")
-                sys.exit(1)
+            zone = identify_zone(determine_axes(parcels[0]['pts'])[0])
             print(f"  带号: {zone}  EPSG: {4509+zone}")
 
             # 匹配文字
@@ -275,7 +266,7 @@ def main():
             # 分类：MJZJ 面积注记 vs 姓名层 户名
             area_texts = texts.get('MJZJ', [])
             owner_texts = []
-            for layer in ['姓名层', '户名层', '0']:
+            for layer in ['姓名层', '户名层', 'mainlayer']:
                 # 0图层上也有可能有文字，但包含很多数字标注，只取姓名层和户名层
                 if layer != '0':
                     owner_texts.extend(texts.get(layer, []))
