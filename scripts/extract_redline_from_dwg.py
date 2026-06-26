@@ -121,10 +121,11 @@ def determine_axes(pts):
 
 
 def identify_zone(eastings):
+    """从东坐标前2位识别3度带带号。东坐标不含带号时返回None。"""
     avg = sum(eastings) / len(eastings)
     if avg > 1e7:
         return int(str(int(avg))[:2])
-    return 39  # 蚌埠默认
+    return None
 
 
 def to_wgs(pts_raw, zone):
@@ -133,9 +134,12 @@ def to_wgs(pts_raw, zone):
     t = Transformer.from_crs(f"EPSG:{epsg}", "EPSG:4326", always_xy=True)
     prefix = zone * 1000000
     eastings, northings, _ = determine_axes(pts_raw)
+    # 判断东坐标是否含带号前缀（8位数含，6位数不含）
+    has_prefix = eastings[0] > 1e7
     result = []
     for e, n in zip(eastings, northings):
-        lon, lat = t.transform(e - prefix, n)
+        true_e = e - prefix if has_prefix else e
+        lon, lat = t.transform(true_e, n)
         if lat != float('inf'):
             result.append((lat, lon))
     return result
@@ -194,6 +198,8 @@ def main():
     parser.add_argument('--input', required=True, help='DWG文件路径')
     parser.add_argument('--output', required=True, help='输出KML路径')
     parser.add_argument('--project-name', default='项目红线', help='项目名称')
+    parser.add_argument('--zone', type=int, default=None,
+                        help='3度带带号（如39）。不指定时自动从东坐标前2位识别')
     args = parser.parse_args()
 
     print("=" * 50)
@@ -233,7 +239,11 @@ def main():
                 print("❌ 未找到红线多段线，请检查DWG图层")
                 sys.exit(1)
 
-            zone = identify_zone(determine_axes(redlines[0]['pts'])[0])
+            zone = args.zone or identify_zone(determine_axes(redlines[0]['pts'])[0])
+            if not zone:
+                print("❌ 无法自动识别带号（东坐标不含带号前缀），请通过 --zone 参数指定")
+                print("   示例: --zone 39 (蚌埠)  --zone 40 (上海)  --zone 38 (武汉)")
+                sys.exit(1)
             print(f"  带号: {zone}  EPSG: {4509+zone}")
 
             placemarks = []
@@ -261,7 +271,11 @@ def main():
                 print("❌ 未找到面积>=0.5亩的宗地多段线，请检查DWG文件")
                 sys.exit(1)
 
-            zone = identify_zone(determine_axes(parcels[0]['pts'])[0])
+            zone = args.zone or identify_zone(determine_axes(parcels[0]['pts'])[0])
+            if not zone:
+                print("❌ 无法自动识别带号（东坐标不含带号前缀），请通过 --zone 参数指定")
+                print("   示例: --zone 39 (蚌埠)  --zone 40 (上海)  --zone 38 (武汉)")
+                sys.exit(1)
             print(f"  带号: {zone}  EPSG: {4509+zone}")
 
             # 匹配文字
