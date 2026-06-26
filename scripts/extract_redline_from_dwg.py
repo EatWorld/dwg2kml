@@ -25,7 +25,7 @@ ODA_PATHS = [
     r"C:\Program Files\ODA\ODAFileConverter 27.1.0\ODAFileConverter.exe",
     r"C:\Program Files\ODA\ODAFileConverter 27.1\ODAFileConverter.exe",
 ]
-REDLINE_KEYWORDS = ['红线', '用地红线', 'redline', 'REDLINE', 'RedLine']
+REDLINE_KEYWORDS = ['红线', '用地红线', '规划红线', 'redline', 'REDLINE', 'RedLine', 'YD-边界', 'JZD']
 TEXT_LAYERS = ['姓名层', 'MJZJ', '面积层', '户名层', 'mainlayer']
 AREA_MIN_MU = 0.5  # 面积量算图模式：最小宗地面积（亩）
 
@@ -229,6 +229,9 @@ def main():
             redlines = [p for p in polylines if any(kw in p['layer'] for kw in REDLINE_KEYWORDS)]
             redlines.sort(key=lambda x: x['area'], reverse=True)
             print(f"  红线: {len(redlines)} 条")
+            if not redlines:
+                print("❌ 未找到红线多段线，请检查DWG图层")
+                sys.exit(1)
 
             zone = identify_zone(determine_axes(redlines[0]['pts'])[0])
             print(f"  带号: {zone}  EPSG: {4509+zone}")
@@ -254,6 +257,9 @@ def main():
             parcels = [p for p in polylines if p['mu'] >= AREA_MIN_MU]
             parcels.sort(key=lambda x: x['area'], reverse=True)
             print(f"  宗地: {len(parcels)} 块")
+            if not parcels:
+                print("❌ 未找到面积>=0.5亩的宗地多段线，请检查DWG文件")
+                sys.exit(1)
 
             zone = identify_zone(determine_axes(parcels[0]['pts'])[0])
             print(f"  带号: {zone}  EPSG: {4509+zone}")
