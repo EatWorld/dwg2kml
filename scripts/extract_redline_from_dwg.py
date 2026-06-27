@@ -49,6 +49,7 @@ def setup_odafc():
 
 def collect_polylines(msp, layer_filter=None):
     polylines = []
+    # LWPOLYLINE（轻量多段线，常见）
     for e in msp.query('LWPOLYLINE'):
         if layer_filter and e.dxf.layer not in layer_filter:
             continue
@@ -61,12 +62,24 @@ def collect_polylines(msp, layer_filter=None):
             area += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1]
         area = abs(area) / 2.0
         polylines.append({
-            'area': area,
-            'mu': area / 666.67,
-            'npts': len(pts),
-            'closed': e.closed,
-            'pts': pts,
-            'layer': e.dxf.layer,
+            'area': area, 'mu': area / 666.67, 'npts': len(pts),
+            'closed': e.closed, 'pts': pts, 'layer': e.dxf.layer,
+        })
+    # POLYLINE（旧式多段线，从顶点提取坐标）
+    for e in msp.query('POLYLINE'):
+        if layer_filter and e.dxf.layer not in layer_filter:
+            continue
+        pts = [(v.dxf.location.x, v.dxf.location.y) for v in e.vertices]
+        if len(pts) < 3:
+            continue
+        area = 0.0
+        for i in range(len(pts)):
+            j = (i + 1) % len(pts)
+            area += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1]
+        area = abs(area) / 2.0
+        polylines.append({
+            'area': area, 'mu': area / 666.67, 'npts': len(pts),
+            'closed': e.is_closed, 'pts': pts, 'layer': e.dxf.layer,
         })
     return polylines
 
